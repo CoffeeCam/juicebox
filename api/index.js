@@ -61,4 +61,20 @@ apiRouter.use((error, req, res, next) => {
   res.send(error);
 });
 
+apiRouter.get('/home', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public', 'index.html'));
+});
+
+// Error handler
+apiRouter.use((error, req, res, next) => {
+  res.status(500).json({
+    error: {
+      name: error.name,
+      message: error.message,
+    },
+  });
+});
+
+module.exports = apiRouter;
+
 module.exports = apiRouter;

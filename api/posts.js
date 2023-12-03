@@ -8,6 +8,7 @@ const {
   getAllPosts,
   updatePost,
   getPostById,
+  deletePost, // Import the deletePost function
 } = require('../db');
 
 postsRouter.get('/', async (req, res, next) => {
@@ -15,17 +16,9 @@ postsRouter.get('/', async (req, res, next) => {
     const allPosts = await getAllPosts();
 
     const posts = allPosts.filter(post => {
-      // the post is active, doesn't matter who it belongs to
-      if (post.active) {
+      if (post.active || (req.user && post.author.id === req.user.id)) {
         return true;
       }
-    
-      // the post is not active, but it belogs to the current user
-      if (req.user && post.author.id === req.user.id) {
-        return true;
-      }
-    
-      // none of the above are true
       return false;
     });
   
@@ -38,15 +31,16 @@ postsRouter.get('/', async (req, res, next) => {
 });
 
 postsRouter.post('/', requireUser, async (req, res, next) => {
-  const { title, content = "" } = req.body;
+  const { title, content = "", tags } = req.body;
 
-  const postData = {};
+  const postData = {
+    authorId: req.user.id,
+    title,
+    content,
+    tags: tags ? tags.trim().split(/\s+/) : [], // Handle tags
+  };
 
   try {
-    postData.authorId = req.user.id;
-    postData.title = title;
-    postData.content = content;
-
     const post = await createPost(postData);
 
     if (post) {
@@ -55,7 +49,7 @@ postsRouter.post('/', requireUser, async (req, res, next) => {
       next({
         name: 'PostCreationError',
         message: 'There was an error creating your post. Please try again.'
-      })
+      });
     }
   } catch ({ name, message }) {
     next({ name, message });
@@ -69,7 +63,7 @@ postsRouter.patch('/:postId', requireUser, async (req, res, next) => {
   const updateFields = {};
 
   if (tags && tags.length > 0) {
-    updateFields.tags = tags.trim().split(/\s+/);
+    updateFields.tags = tags.trim().split(/\s+/); // Handle tags
   }
 
   if (title) {
@@ -85,12 +79,12 @@ postsRouter.patch('/:postId', requireUser, async (req, res, next) => {
 
     if (originalPost.author.id === req.user.id) {
       const updatedPost = await updatePost(postId, updateFields);
-      res.send({ post: updatedPost })
+      res.send({ post: updatedPost });
     } else {
       next({
         name: 'UnauthorizedUserError',
         message: 'You cannot update a post that is not yours'
-      })
+      });
     }
   } catch ({ name, message }) {
     next({ name, message });
@@ -98,7 +92,31 @@ postsRouter.patch('/:postId', requireUser, async (req, res, next) => {
 });
 
 postsRouter.delete('/:postId', requireUser, async (req, res, next) => {
-  res.send({ message: 'under construction' });
+  const { postId } = req.params;
+
+  try {
+    const postToDelete = await getPostById(postId);
+
+    if (!postToDelete) {
+      return next({
+        name: 'PostNotFoundError',
+        message: 'Post not found',
+      });
+    }
+
+    if (postToDelete.author.id !== req.user.id) {
+      return next({
+        name: 'UnauthorizedUserError',
+        message: 'You cannot delete a post that is not yours',
+      });
+    }
+
+    await deletePost(postId);
+
+    res.send({ message: 'Post deleted successfully' });
+  } catch ({ name, message }) {
+    next({ name, message });
+  }
 });
 
 module.exports = postsRouter;
